@@ -1,7 +1,7 @@
 {
-  "name": "epj-0",
+  "name": "photo-jeeves-admin",
   "version": "0.0.1",
-  "description": "electron photo-jeeves",
+  "description": "photo-jeeves admin app",
   "main": "main.js",
   "scripts": {
     "build": "node node_modules/webpack/bin/webpack --config ./webpack.config.js --watch",
