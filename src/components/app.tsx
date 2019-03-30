@@ -1,10 +1,21 @@
 import * as React from 'react';
 import MuiThemeProvider from 'material-ui/styles/MuiThemeProvider';
 import RaisedButton from 'material-ui/RaisedButton';
+import { getGoogleAlbums } from '../utilities/googleInterface';
+import { getDbAlbums, openDb } from '../utilities/dbInterface';
+import { GoogleAlbum, DbAlbum } from '../types';
+import { isNil } from 'lodash';
+
+interface AlbumNames {
+  googleAlbumId: string;
+  googleAlbumTitle: string;
+  dbAlbumTitle: string;
+}
 
 export default class App extends React.Component<any, object> {
 
   state: {
+    accessToken: string;
     status: string;
   };
 
@@ -12,7 +23,8 @@ export default class App extends React.Component<any, object> {
     super(props);
 
     this.state = { 
-      status: '' 
+      accessToken: '',
+      status: '',
     };
 
     this.handleSynchronizeAlbums = this.handleSynchronizeAlbums.bind(this);
@@ -24,7 +36,67 @@ export default class App extends React.Component<any, object> {
   }
 
   componentDidMount() {
+
+    const remote = require('electron').remote;
+    const accessToken = (remote.app as any).accessToken;
+    this.setState( {
+      accessToken,
+    });
+
+    console.log('componentDidMount');
+    console.log('accessToken');
+    console.log(accessToken);
+
     this.updateStatus('Retrieving album information...');
+
+    openDb().then( () => {
+      this.getAlbumStatus(accessToken);
+    });
+  }
+
+  getAlbumStatus(accessToken: string) {
+
+    const promises: Array<Promise<any>> = [];
+    promises.push(getGoogleAlbums(accessToken));
+    promises.push(getDbAlbums());
+  
+    Promise.all(promises).then((albumStatusResults: any[]) => {
+
+      const googleAlbums: GoogleAlbum[] = albumStatusResults[0];
+      const dbAlbums: DbAlbum[] = albumStatusResults[1];
+  
+      const albumsById: Map<string, AlbumNames> = new Map();
+  
+      googleAlbums.forEach( (googleAlbum: GoogleAlbum) => {
+        albumsById.set(googleAlbum.googleAlbumId, 
+          { 
+            googleAlbumId: googleAlbum.googleAlbumId,
+            googleAlbumTitle: googleAlbum.title,
+            dbAlbumTitle: '',
+          },
+        );
+      });
+
+      dbAlbums.forEach( (dbAlbum: DbAlbum) => {
+        const matchingAlbum: AlbumNames = albumsById.get(dbAlbum.googleId);
+        if (!isNil(matchingAlbum)) {
+          albumsById.set(matchingAlbum.googleAlbumId, 
+            { 
+              googleAlbumId: matchingAlbum.googleAlbumId,
+              googleAlbumTitle: matchingAlbum.googleAlbumTitle,
+              dbAlbumTitle: dbAlbum.title,
+            },
+          );
+        }
+      });
+
+      const allAlbumNames: AlbumNames[] = [];
+      albumsById.forEach( (albumNames: AlbumNames) => {
+        allAlbumNames.push(albumNames);
+      });
+
+      debugger;
+    });
   }
 
   handleSynchronizeAlbums() {
