@@ -99,6 +99,7 @@ export default class App extends React.Component<any, object> {
       });
       this.setState({
         allAlbumNames,
+        status: '',
       });
     });
   }
@@ -216,9 +217,9 @@ export default class App extends React.Component<any, object> {
     );
   }
 
-  renderAlbumRow(albumNames: AlbumNames) {
+  renderAlbumRow(albumNames: AlbumNames, index: number) {
     return (
-      <tr>
+      <tr key={index}>
         <td>{albumNames.googleAlbumTitle}</td>
         <td>{albumNames.dbAlbumTitle}</td>
       </tr>
@@ -226,8 +227,8 @@ export default class App extends React.Component<any, object> {
   }
 
   renderAlbumRows() {
-    return this.state.allAlbumNames.map( (albumNames: AlbumNames) => {
-      return this.renderAlbumRow(albumNames);
+    return this.state.allAlbumNames.map((albumNames: AlbumNames, index: number) => {
+      return this.renderAlbumRow(albumNames, index);
     });
   }
 
@@ -239,11 +240,15 @@ export default class App extends React.Component<any, object> {
 
     return (
       <table>
-        <tr>
-          <th>Google Album Name</th>
-          <th>Db Album Name</th>
-        </tr>
-        {this.renderAlbumRows()}
+        <thead>
+          <tr>
+            <th>Google Album Name</th>
+            <th>Db Album Name</th>
+          </tr>
+        </thead>
+        <tbody>
+          {this.renderAlbumRows()}
+        </tbody>
       </table>
     );
   }
@@ -258,12 +263,19 @@ export default class App extends React.Component<any, object> {
           {this.renderTitle()}
           {this.renderStatus()}
           {this.renderSynchronizeAlbumsButton()}
+          <br></br>
           {this.renderSynchronizeAlbumNamesButton()}
+          <br></br>
           {this.renderGeneratePhotoCollectionManifestButton()}
+          <br></br>
           {this.renderGeneratePhotoJeevesAlbumsButton()}
+          <br></br>
           {this.renderConvertHeicFilesButton()}
+          <br></br>
           {this.renderAuditPhotosButton()}
+          <br></br>
           {this.renderAlbumList()}
+          <br></br>
         </div>
       </MuiThemeProvider>
     );
