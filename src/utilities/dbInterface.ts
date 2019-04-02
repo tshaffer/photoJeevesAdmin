@@ -38,6 +38,7 @@ export function getDbAlbums(): Promise<DbAlbum[]> {
   return query.exec().then((results: any) => {
     const dbAlbums: DbAlbum[] = results.map((result: any) => {
       return {
+        dbId: result._id.toString(),
         googleId: result.id,
         title: result.title,
         mediaItemIds: getDbMediaItemIds(result.mediaItemIds),

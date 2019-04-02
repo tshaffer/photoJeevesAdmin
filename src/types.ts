@@ -2,6 +2,15 @@ export interface Dict<T> {
   [id: string]: T;
 }
 
+export interface AlbumSpec {
+  googleAlbumId: string;
+  googleAlbumTitle: string;
+  dbId?: string;
+  dbAlbumId?: string;
+  dbAlbumTitle?: string;
+}
+
+
 // investigate map as alternative to Dict
 // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map
 
@@ -26,6 +35,7 @@ export interface AlbumWithDifferences {
 }
 
 export interface DbAlbum {
+  dbId: string;
   googleId: string; // known as id
   title: string;
   mediaItemIds: string[];

@@ -1,23 +1,24 @@
 import * as React from 'react';
+import { isNil } from 'lodash';
+import * as fse from 'fs-extra';
+import * as path from 'path';
+
 import MuiThemeProvider from 'material-ui/styles/MuiThemeProvider';
 import RaisedButton from 'material-ui/RaisedButton';
 import { getGoogleAlbums } from '../utilities/googleInterface';
 import { getDbAlbums, openDb } from '../utilities/dbInterface';
-import { GoogleAlbum, DbAlbum } from '../types';
-import { isNil } from 'lodash';
-import album from '../models/album';
+import { GoogleAlbum, DbAlbum, AlbumSpec } from '../types';
 
-interface AlbumNames {
-  googleAlbumId: string;
-  googleAlbumTitle: string;
-  dbAlbumTitle: string;
-}
+import Album from '../models/album';
+import MediaItem from '../models/mediaItem';
+
+var ObjectId = require('mongoose').Types.ObjectId; 
 
 export default class App extends React.Component<any, object> {
 
   state: {
     accessToken: string;
-    allAlbumNames: AlbumNames[];
+    allAlbums: AlbumSpec[];
     status: string;
   };
 
@@ -26,7 +27,7 @@ export default class App extends React.Component<any, object> {
 
     this.state = {
       accessToken: '',
-      allAlbumNames: [],
+      allAlbums: [],
       status: '',
     };
 
@@ -67,41 +68,148 @@ export default class App extends React.Component<any, object> {
 
       const googleAlbums: GoogleAlbum[] = albumStatusResults[0];
       const dbAlbums: DbAlbum[] = albumStatusResults[1];
-
-      const albumsById: Map<string, AlbumNames> = new Map();
+      
+      const albumsById: Map<string, AlbumSpec> = new Map();
 
       googleAlbums.forEach((googleAlbum: GoogleAlbum) => {
         albumsById.set(googleAlbum.googleAlbumId,
           {
             googleAlbumId: googleAlbum.googleAlbumId,
             googleAlbumTitle: googleAlbum.title,
-            dbAlbumTitle: '',
           },
         );
       });
 
       dbAlbums.forEach((dbAlbum: DbAlbum) => {
-        const matchingAlbum: AlbumNames = albumsById.get(dbAlbum.googleId);
+        const matchingAlbum: AlbumSpec = albumsById.get(dbAlbum.googleId);
         if (!isNil(matchingAlbum)) {
           albumsById.set(matchingAlbum.googleAlbumId,
             {
               googleAlbumId: matchingAlbum.googleAlbumId,
               googleAlbumTitle: matchingAlbum.googleAlbumTitle,
+              dbId: dbAlbum.dbId,
+              dbAlbumId: dbAlbum.googleId,
               dbAlbumTitle: dbAlbum.title,
             },
           );
         }
       });
 
-      const allAlbumNames: AlbumNames[] = [];
-      albumsById.forEach((albumNames: AlbumNames) => {
-        allAlbumNames.push(albumNames);
+      const allAlbumSpecs: AlbumSpec[] = [];
+      albumsById.forEach((albumSpec: AlbumSpec) => {
+        allAlbumSpecs.push(albumSpec);
       });
       this.setState({
-        allAlbumNames,
+        allAlbums: allAlbumSpecs,
         status: '',
       });
     });
+  }
+
+  generatePhotoCollectionManifest(filePath: string): Promise<void> {
+
+    const mediaItemsQuery = MediaItem.find({});
+    return mediaItemsQuery.exec()
+    .then((mediaItemQueryResults: any) => {
+      const albumsQuery = Album.find({});
+      return albumsQuery.exec()
+        .then((albumsQueryResults: any) => {
+
+          const mediaItemsById: any = {};
+          mediaItemQueryResults.forEach((mediaItem: any) => {
+            mediaItemsById[mediaItem.id] = {
+              id: mediaItem.id,
+              fileName: mediaItem.fileName,
+              width: mediaItem.width,
+              height: mediaItem.height,
+            };
+          });
+
+          const albumItemsByAlbumName: any = {};
+          albumsQueryResults.forEach((album: any) => {
+            const albumName: string = album.title;
+            const albumId: string = album.id;
+            const mediaItemIdsInAlbum: any[] = [];
+            const dbMediaItemIdsInAlbum = album.mediaItemIds;
+            // tslint:disable-next-line: prefer-for-of
+            for (let j = 0; j < dbMediaItemIdsInAlbum.length; j++) {
+              mediaItemIdsInAlbum.push(dbMediaItemIdsInAlbum[j]);
+            }
+            albumItemsByAlbumName[albumName] = {
+              id: albumId,
+              mediaItemIds: dbMediaItemIdsInAlbum,
+            };
+          });
+          console.log(albumItemsByAlbumName);
+
+          const manifestFile = {
+            mediaItemsById,
+            albums: albumItemsByAlbumName,
+          };
+          const json = JSON.stringify(manifestFile, null, 2);
+          fse.writeFile(filePath, json, 'utf8', (err) => {
+            if (err) {
+              console.log('err');
+              console.log(err);
+            }
+            else {
+              console.log('photoCollectionManifest.json successfully written');
+            }
+            return;
+          });
+        });
+    });
+
+  }
+
+  generateAlbumsList(filePath: string) {
+  
+    const manifestPath = '/Users/tedshaffer/Documents/Projects/sinker/photoCollectionManifest.json';
+  
+    const manifestContents = fse.readFileSync(manifestPath);
+    // attempt to convert buffer to string resulted in Maximum Call Stack exceeded
+    const photoManifest = JSON.parse(manifestContents as any);
+    console.log(photoManifest);
+  
+    const photoJeevesAlbums: any[] = [];
+  
+    const albums = photoManifest.albums;
+  
+    for (const albumName in albums) {
+      if (albums.hasOwnProperty(albumName)) {
+        const title = albumName;
+        const photoCount = albums[albumName].length;
+        photoJeevesAlbums.push({
+          title,
+          photoCount,
+        });
+      }
+    }
+  
+    const photoJeevesAlbumsSpec: any = {
+      ALBUM_SPECS: photoJeevesAlbums,
+    };
+  
+    const json = JSON.stringify(photoJeevesAlbumsSpec, null, 2);
+    fse.writeFile('photoJeevesAlbums.json', json, 'utf8', (err) => {
+      if (err) {
+        console.log('err');
+        console.log(err);
+      }
+      else {
+        console.log('photoJeevesAlbums.json successfully written');
+      }
+    });
+  }
+  
+  generateManifestFiles() {
+    const adminPath = '/Users/tedshaffer/Documents/Projects/photoJeeves/admin';
+    const manifestPath = path.join(adminPath, 'photoCollectionManifest.json');
+    this.generatePhotoCollectionManifest(manifestPath).then( () => {
+      console.log('photoCollectionManifest.json written');
+      const albumsPath = path.join(adminPath, 'photoJeevesAlbums.json');
+      this.generateAlbumsList(albumsPath);
+    })
   }
 
   handleSynchronizeAlbums() {
@@ -110,10 +218,39 @@ export default class App extends React.Component<any, object> {
 
   handleSynchronizeAlbumNames() {
     console.log('handleSynchronizeAlbumNames');
+    console.log(this.state.allAlbums);
+
+    this.state.allAlbums.forEach( (albumSpec: AlbumSpec) => {
+      if (!isNil(albumSpec.dbAlbumId)) {
+        const dbAlbumTitle: string = albumSpec.dbAlbumTitle as string;
+        if (dbAlbumTitle !== albumSpec.googleAlbumTitle) {
+
+          console.log(albumSpec);
+
+          const albumsQuery = Album.find({id: albumSpec.googleAlbumId});
+          albumsQuery.exec()
+            .then((albumsQueryResults: any) => {
+              albumsQueryResults.forEach((album: any) => {
+                console.log(album);
+                album.title = albumSpec.googleAlbumTitle;
+                album.save()
+                  .then( (product: any) => {
+                    console.log('album saved successfully');
+                    console.log(product);
+                  })
+                  .catch( (err: any) => {
+                    console.log('album save failed: ', err);
+                  })
+              });
+            });
+        }
+      }
+    })
   }
 
   handleGeneratePhotoCollectionManifest() {
     console.log('handleGeneratePhotoCollectionManifest');
+    this.generateManifestFiles();
   }
 
   handleGeneratePhotoJeevesAlbums() {
@@ -217,7 +354,7 @@ export default class App extends React.Component<any, object> {
     );
   }
 
-  renderAlbumRow(albumNames: AlbumNames, index: number) {
+  renderAlbumRow(albumNames: AlbumSpec, index: number) {
     return (
       <tr key={index}>
         <td>{albumNames.googleAlbumTitle}</td>
@@ -227,14 +364,14 @@ export default class App extends React.Component<any, object> {
   }
 
   renderAlbumRows() {
-    return this.state.allAlbumNames.map((albumNames: AlbumNames, index: number) => {
+    return this.state.allAlbums.map((albumNames: AlbumSpec, index: number) => {
       return this.renderAlbumRow(albumNames, index);
     });
   }
 
   renderAlbumList() {
 
-    if (this.state.allAlbumNames.length === 0) {
+    if (this.state.allAlbums.length === 0) {
       return null;
     }
 
