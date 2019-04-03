@@ -34,7 +34,6 @@ export default class App extends React.Component<any, object> {
     this.handleSynchronizeAlbums = this.handleSynchronizeAlbums.bind(this);
     this.handleSynchronizeAlbumNames = this.handleSynchronizeAlbumNames.bind(this);
     this.handleGeneratePhotoCollectionManifest = this.handleGeneratePhotoCollectionManifest.bind(this);
-    this.handleGeneratePhotoJeevesAlbums = this.handleGeneratePhotoJeevesAlbums.bind(this);
     this.handleConvertHeicFiles = this.handleConvertHeicFiles.bind(this);
     this.handleAuditPhotos = this.handleAuditPhotos.bind(this);
   }
@@ -253,10 +252,6 @@ export default class App extends React.Component<any, object> {
     this.generateManifestFiles();
   }
 
-  handleGeneratePhotoJeevesAlbums() {
-    console.log('handleGeneratePhotoJeevesAlbums');
-  }
-
   handleConvertHeicFiles() {
     console.log('handleConvertHeicFiles');
   }
@@ -288,7 +283,7 @@ export default class App extends React.Component<any, object> {
   renderSynchronizeAlbumsButton() {
     return (
       <RaisedButton
-        label='Synchronize albums, album contents'
+        label='Sync content'
         onClick={this.handleSynchronizeAlbums}
       />
     );
@@ -297,7 +292,7 @@ export default class App extends React.Component<any, object> {
   renderSynchronizeAlbumNamesButton() {
     return (
       <RaisedButton
-        label='Synchronize album names'
+        label='Sync album names'
         onClick={this.handleSynchronizeAlbumNames}
         style={{
           marginTop: '10px',
@@ -306,23 +301,11 @@ export default class App extends React.Component<any, object> {
     );
   }
 
-  renderGeneratePhotoCollectionManifestButton() {
+  renderGenerateManifests() {
     return (
       <RaisedButton
-        label='Generate photoCollectionManifest.json'
+        label='Generate Manifests'
         onClick={this.handleGeneratePhotoCollectionManifest}
-        style={{
-          marginTop: '10px',
-        }}
-      />
-    );
-  }
-
-  renderGeneratePhotoJeevesAlbumsButton() {
-    return (
-      <RaisedButton
-        label='Generate photoJeevesAlbums.json'
-        onClick={this.handleGeneratePhotoJeevesAlbums}
         style={{
           marginTop: '10px',
         }}
@@ -333,7 +316,7 @@ export default class App extends React.Component<any, object> {
   renderConvertHeicFilesButton() {
     return (
       <RaisedButton
-        label='Convert Heic files'
+        label='Convert Heic'
         onClick={this.handleConvertHeicFiles}
         style={{
           marginTop: '10px',
@@ -345,7 +328,7 @@ export default class App extends React.Component<any, object> {
   renderAuditPhotosButton() {
     return (
       <RaisedButton
-        label='Perform google photos vs. db photos audit'
+        label='Audit Photos'
         onClick={this.handleAuditPhotos}
         style={{
           marginTop: '10px',
@@ -403,9 +386,7 @@ export default class App extends React.Component<any, object> {
           <br></br>
           {this.renderSynchronizeAlbumNamesButton()}
           <br></br>
-          {this.renderGeneratePhotoCollectionManifestButton()}
-          <br></br>
-          {this.renderGeneratePhotoJeevesAlbumsButton()}
+          {this.renderGenerateManifests()}
           <br></br>
           {this.renderConvertHeicFilesButton()}
           <br></br>
