@@ -1,6 +1,6 @@
 // import mongoose from 'mongoose';
 import mongoose = require('mongoose');
-
+import { Query, Document } from 'mongoose';
 import {
   DbAlbum,
   PhotoMetadata,
@@ -52,5 +52,17 @@ function getDbMediaItemIds(dbMediaItemIds: any[]): string[] {
   return dbMediaItemIds.map((mediaItemId: any) => {
     return mediaItemId.toString();
   });
+}
+
+export function addAlbumsToDb(albums: DbAlbum[]): Promise<Document[]> {
+  const albumsToInsert: any[] = [];
+  albums.forEach((dbAlbum: DbAlbum) => {
+    albumsToInsert.push({
+      id: dbAlbum.googleId,
+      title: dbAlbum.title,
+      mediaItemIds: dbAlbum.mediaItemIds,
+    });
+  });
+  return Album.insertMany(albumsToInsert);
 }
 

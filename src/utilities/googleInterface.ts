@@ -8,6 +8,7 @@ import {
   GoogleMediaItem,
   AlbumWithDifferences,
 } from '../types';
+import requestPromise = require('request-promise');
 
 export function getGoogleAlbums(accessToken: string): Promise<GoogleAlbum[]> {
 
@@ -55,5 +56,45 @@ export function getGoogleAlbums(accessToken: string): Promise<GoogleAlbum[]> {
   };
 
   return processGetAlbums('');
+}
+
+export function getAlbumContents(accessToken: string, albumId: string): Promise<string[]> {
+
+  let mediaItemsIds: string[] = [];
+
+  const processFetchAlbumContents = (pageToken: string): any => {
+
+    let apiEndpoint = 'https://photoslibrary.googleapis.com/v1/mediaItems:search?pageSize=100';
+    if (pageToken !== '' && (typeof pageToken !== 'undefined')) {
+      apiEndpoint = apiEndpoint + '&pageToken=' + pageToken;
+    }
+
+    console.log('get album mediaItemIds for albumId: ', albumId, ', pageToken: ', pageToken);
+
+    return requestPromise.post(apiEndpoint, {
+      headers: { 'Content-Type': 'application/json' },
+      json: true,
+      auth: { bearer: accessToken },
+      body: { albumId },
+    }).then((result) => {
+
+      if (result.mediaItems && result.mediaItems.length > 0) {
+        const mediaItemIdsInAlbum: string[] = result.mediaItems.map((mediaItem: any) => {
+          return mediaItem.id;
+        });
+        mediaItemsIds = mediaItemsIds.concat(mediaItemIdsInAlbum);
+      }
+
+      if (result.nextPageToken === undefined) {
+        return Promise.resolve(mediaItemsIds);
+      }
+      return processFetchAlbumContents(result.nextPageToken);
+    }).catch((error: Error) => {
+      debugger;
+      return Promise.reject();
+    });
+  };
+
+  return processFetchAlbumContents('');
 }
 

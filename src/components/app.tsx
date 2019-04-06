@@ -3,11 +3,13 @@ import { isNil } from 'lodash';
 import * as fse from 'fs-extra';
 import * as path from 'path';
 
+import { Query, Document } from 'mongoose';
+
 import MuiThemeProvider from 'material-ui/styles/MuiThemeProvider';
 import RaisedButton from 'material-ui/RaisedButton';
-import { getGoogleAlbums } from '../utilities/googleInterface';
-import { getDbAlbums, openDb } from '../utilities/dbInterface';
-import { GoogleAlbum, DbAlbum, AlbumSpec } from '../types';
+import { getGoogleAlbums, getAlbumContents } from '../utilities/googleInterface';
+import { getDbAlbums, openDb, addAlbumsToDb } from '../utilities/dbInterface';
+import { GoogleAlbum, DbAlbum, AlbumSpec, CompositeAlbumMap, CompositeAlbum, AlbumsByTitle } from '../types';
 
 import Album from '../models/album';
 import MediaItem from '../models/mediaItem';
@@ -16,8 +18,10 @@ var ObjectId = require('mongoose').Types.ObjectId;
 
 export default class App extends React.Component<any, object> {
 
+  accessToken: string = '';
+  compositeAlbumsById: CompositeAlbumMap = {};
+
   state: {
-    accessToken: string;
     allAlbums: AlbumSpec[];
     status: string;
   };
@@ -26,7 +30,6 @@ export default class App extends React.Component<any, object> {
     super(props);
 
     this.state = {
-      accessToken: '',
       allAlbums: [],
       status: '',
     };
@@ -41,26 +44,23 @@ export default class App extends React.Component<any, object> {
   componentDidMount() {
 
     const remote = require('electron').remote;
-    const accessToken = (remote.app as any).accessToken;
-    this.setState({
-      accessToken,
-    });
+    this.accessToken = (remote.app as any).accessToken;
 
     console.log('componentDidMount');
     console.log('accessToken');
-    console.log(accessToken);
+    console.log(this.accessToken);
 
     this.updateStatus('Retrieving album information...');
 
     openDb().then(() => {
-      this.getAlbumStatus(accessToken);
+      this.getAlbumStatus();
     });
   }
 
-  getAlbumStatus(accessToken: string) {
+  getAlbumStatus() {
 
     const promises: Array<Promise<any>> = [];
-    promises.push(getGoogleAlbums(accessToken));
+    promises.push(getGoogleAlbums(this.accessToken));
     promises.push(getDbAlbums());
 
     Promise.all(promises).then((albumStatusResults: any[]) => {
@@ -211,8 +211,183 @@ export default class App extends React.Component<any, object> {
     })
   }
 
+  getAlbumsListFromManifest(): AlbumsByTitle {
+
+    const manifestPath = '/Users/tedshaffer/Documents/Projects/photoJeeves/admin/photoCollectionManifest.json';
+
+    const manifestContents = fse.readFileSync(manifestPath);
+    // attempt to convert buffer to string resulted in Maximum Call Stack exceeded
+    const photoManifest = JSON.parse(manifestContents as any);
+    console.log(photoManifest);
+
+    const photoJeevesAlbums: AlbumsByTitle = {};
+
+    const albums = photoManifest.albums;
+
+    for (const albumName in albums) {
+      if (albums.hasOwnProperty(albumName)) {
+        const title = albumName;
+        const photoCount = albums[albumName].length;
+        photoJeevesAlbums[title] = photoCount;
+      }
+    }
+
+    return photoJeevesAlbums;
+  }
+
+
+  getDetailedAlbumData(): Promise<any> {
+
+    const promises: Array<Promise<any>> = [];
+
+    promises.push(getGoogleAlbums(this.accessToken));
+    promises.push(getDbAlbums());
+
+    return Promise.all(promises).then((albumStatusResults: any[]) => {
+      console.log(albumStatusResults);
+      const googleAlbums: GoogleAlbum[] = albumStatusResults[0];
+      const dbAlbums: DbAlbum[] = albumStatusResults[1];
+
+      googleAlbums.forEach((googleAlbum: GoogleAlbum) => {
+        const allAlbum: CompositeAlbum = {
+          googleAlbum,
+          id: googleAlbum.googleAlbumId,
+          googleTitle: googleAlbum.title,
+          googlePhotoCount: googleAlbum.mediaItemsCount,
+          inDb: false,
+          dbTitle: '',
+          dbPhotoCount: 0,
+          onHd: false,
+        };
+        this.compositeAlbumsById[googleAlbum.googleAlbumId] = allAlbum;
+      });
+
+      dbAlbums.forEach((dbAlbum: DbAlbum) => {
+        if (this.compositeAlbumsById.hasOwnProperty(dbAlbum.googleId)) {
+          const compositeAlbum: CompositeAlbum = this.compositeAlbumsById[dbAlbum.googleId];
+          compositeAlbum.inDb = true;
+          compositeAlbum.dbTitle = dbAlbum.title;
+          compositeAlbum.dbPhotoCount = dbAlbum.mediaItemIds.length;
+          this.compositeAlbumsById[dbAlbum.googleId] = compositeAlbum;
+        }
+        else {
+          console.log('No matching google album for dbAlbum: ', dbAlbum.title);
+        }
+      });
+
+      const hdAlbumsByTitle: AlbumsByTitle = this.getAlbumsListFromManifest();
+
+      const allAlbums: CompositeAlbum[] = [];
+      for (const albumId in this.compositeAlbumsById) {
+        if (this.compositeAlbumsById.hasOwnProperty(albumId)) {
+          const compositeAlbum = this.compositeAlbumsById[albumId];
+          const compositeAlbumName = compositeAlbum.googleTitle;
+          if (hdAlbumsByTitle.hasOwnProperty(compositeAlbumName)) {
+            const hdAlbumCount: number = hdAlbumsByTitle[compositeAlbumName];
+            compositeAlbum.onHd = true;
+            compositeAlbum.hdPhotoCount = hdAlbumCount;
+          }
+          allAlbums.push(compositeAlbum);
+        }
+      }
+
+      return Promise.resolve();
+    });
+  }
+
+  getListOfAlbumsToDownload(): CompositeAlbum[] {
+    const compositeAlbumsToDownload: CompositeAlbum[] = [];
+    Object.keys(this.compositeAlbumsById).forEach((compositeAlbumId: string) => {
+      const compositeAlbum: CompositeAlbum = this.compositeAlbumsById[compositeAlbumId];
+      if (!compositeAlbum.inDb) {
+        compositeAlbumsToDownload.push(compositeAlbum);
+      }
+    });
+    return compositeAlbumsToDownload;
+  }
+
+  fetchNewAlbumsContents(accessToken: string, compositeAlbumsToDownload: CompositeAlbum[]): Promise<void> {
+
+    const processFetchAlbumContents = (index: number): Promise<void> => {
+  
+      console.log('fetchNewAlbumsContents for index: ', index);
+  
+      if (index >= compositeAlbumsToDownload.length) {
+        return Promise.resolve();
+      }
+  
+      const compositeAlbum: CompositeAlbum = compositeAlbumsToDownload[index];
+      const albumId = compositeAlbum.id;
+      return getAlbumContents(accessToken, albumId)
+        .then((mediaItemIds: string[]) => {
+  
+          compositeAlbum.googleAlbum.mediaItemIds = mediaItemIds;
+  
+          return processFetchAlbumContents(index + 1);
+        });
+    };
+    return processFetchAlbumContents(0);
+  }
+  
+  addGoogleAlbumsToDb(compositeAlbums: CompositeAlbum[]): Promise<Document[]> {
+    const dbAlbumsToInsert: DbAlbum[] = [];
+    compositeAlbums.forEach((compositeAlbum: CompositeAlbum) => {
+      const dbAlbum: DbAlbum = {
+        dbId: '', // placeholder
+        googleId: compositeAlbum.googleAlbum.googleAlbumId,
+        title: compositeAlbum.googleAlbum.title,
+        mediaItemIds: compositeAlbum.googleAlbum.mediaItemIds,
+      };
+      dbAlbumsToInsert.push(dbAlbum);
+    });
+    return addAlbumsToDb(dbAlbumsToInsert);
+  }
+  
+  
+  /* Steps
+    get detailed information
+    get new albums
+    get all the mediaItemIds in all albums
+    get all mediaItems that are in the db
+    create a mapping from mediaItemId to mediaItem for all mediaItems in db
+    compare all the mediaItemIds in all the albums to the mediaItemIds in the db.
+    for each mediaItemId (in the albums), if there's not a corresponding media item in the db,
+    add the mediaItemId found in the album to the list of mediaItems
+    that need to be downloaded. (albumMediaItemIdsNotInDb). also, add mediaItems that are
+    found on the db but whose downloadedProperty is false (rare, if non existent at the moment)
+    invoke downloadMediaItemsMetadata to get the mediaItem metadata for all the mediaItems in an album but not in the db
+    invoke downloadMediaItems, supplying the mediaItem metadata retrieved in the last step.
+    New albums are not retrieved. This function assumes that all new albums have been downloaded and added to the db, including
+    the media item ids associated with the albums.
+  */
   handleSynchronizeAlbums() {
+
+    let compositeAlbumsToDownload: CompositeAlbum[];
+
     console.log('handleSynchronizeAlbums');
+
+    // build compositeAlbumsById
+    this.getDetailedAlbumData()
+      .then(() => {
+        console.log(this.compositeAlbumsById);
+
+        // generate a list of compositeAlbums to download
+        compositeAlbumsToDownload = this.getListOfAlbumsToDownload();
+
+        // iterate through compositeAlbumsToDownload
+        //   get mediaItemIds for each compositeAlbumToDownload
+        //   add to compositeAlbumToDownload
+        return this.fetchNewAlbumsContents(this.accessToken, compositeAlbumsToDownload)
+
+      }).then(() => {
+
+        // add albums to db
+        return this.addGoogleAlbumsToDb(compositeAlbumsToDownload);
+
+      }).then(() => {
+        debugger;
+      });
+
   }
 
   handleSynchronizeAlbumNames() {
