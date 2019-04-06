@@ -3,6 +3,7 @@ import { isNil, union, isObject, isString } from 'lodash';
 import * as fse from 'fs-extra';
 import * as path from 'path';
 import axios from 'axios';
+axios.defaults.adapter = require('axios/lib/adapters/http');
 
 import { Query, Document } from 'mongoose';
 
@@ -432,6 +433,8 @@ export default class App extends React.Component<any, object> {
   
       const baseDir = '/Users/tedshaffer/Documents/Projects/photoJeeves/tmp';
   
+      // https://github.com/axios/axios/issues/1474
+
       return getShardedDirectory(baseDir, mediaItem.id)
         .then( (shardedDirectory) => {
           const filePath = path.join(shardedDirectory, fileName);
@@ -449,13 +452,17 @@ export default class App extends React.Component<any, object> {
             return Promise.reject();
           });
         }).then( () => {
+          console.log('new media item download successful');
+          console.log(mediaItem);
           return addMediaItemToDb(mediaItem);
         }).then( () => {
           return processFetchMediaItem(index + 1);
         }).catch((err: Error) => {
+          // output error info to console and move to next item.
           console.log('mediaItem file get/write failed for id:');
           console.log(id);
-          debugger;
+          console.log(err);
+          return processFetchMediaItem(index + 1);
         });
       });
     };
@@ -529,8 +536,6 @@ export default class App extends React.Component<any, object> {
 
         // downloadMediaItems, supplying the mediaItem metadata retrieved in the last step.
         return this.downloadMediaItems(missingMediaItemResults);
-
-        debugger;
 
       });
 
