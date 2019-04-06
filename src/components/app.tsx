@@ -1,18 +1,20 @@
 import * as React from 'react';
-import { isNil } from 'lodash';
+import { isNil, union, isObject, isString } from 'lodash';
 import * as fse from 'fs-extra';
 import * as path from 'path';
+import axios from 'axios';
 
 import { Query, Document } from 'mongoose';
 
 import MuiThemeProvider from 'material-ui/styles/MuiThemeProvider';
 import RaisedButton from 'material-ui/RaisedButton';
-import { getGoogleAlbums, getAlbumContents } from '../utilities/googleInterface';
-import { getDbAlbums, openDb, addAlbumsToDb } from '../utilities/dbInterface';
-import { GoogleAlbum, DbAlbum, AlbumSpec, CompositeAlbumMap, CompositeAlbum, AlbumsByTitle } from '../types';
+import { getGoogleAlbums, getAlbumContents, downloadMediaItemsMetadata } from '../utilities/googleInterface';
+import { getDbAlbums, openDb, addAlbumsToDb, getAllMediaItemsInDb, addMediaItemToDb } from '../utilities/dbInterface';
+import { GoogleAlbum, DbAlbum, AlbumSpec, CompositeAlbumMap, CompositeAlbum, AlbumsByTitle, GoogleMediaItemDownloadResult, GoogleMediaItem, GoogleMediaItemDownloadFailureStatus, GoogleMediaItemDownloadMediaItem } from '../types';
 
 import Album from '../models/album';
 import MediaItem from '../models/mediaItem';
+import { fsLocalFolderExists, fsCreateNestedDirectory, getShardedDirectory, getSuffixFromMimeType } from '../utilities/utilities';
 
 var ObjectId = require('mongoose').Types.ObjectId;
 
@@ -309,26 +311,26 @@ export default class App extends React.Component<any, object> {
   fetchNewAlbumsContents(accessToken: string, compositeAlbumsToDownload: CompositeAlbum[]): Promise<void> {
 
     const processFetchAlbumContents = (index: number): Promise<void> => {
-  
+
       console.log('fetchNewAlbumsContents for index: ', index);
-  
+
       if (index >= compositeAlbumsToDownload.length) {
         return Promise.resolve();
       }
-  
+
       const compositeAlbum: CompositeAlbum = compositeAlbumsToDownload[index];
       const albumId = compositeAlbum.id;
       return getAlbumContents(accessToken, albumId)
         .then((mediaItemIds: string[]) => {
-  
+
           compositeAlbum.googleAlbum.mediaItemIds = mediaItemIds;
-  
+
           return processFetchAlbumContents(index + 1);
         });
     };
     return processFetchAlbumContents(0);
   }
-  
+
   addGoogleAlbumsToDb(compositeAlbums: CompositeAlbum[]): Promise<Document[]> {
     const dbAlbumsToInsert: DbAlbum[] = [];
     compositeAlbums.forEach((compositeAlbum: CompositeAlbum) => {
@@ -341,6 +343,124 @@ export default class App extends React.Component<any, object> {
       dbAlbumsToInsert.push(dbAlbum);
     });
     return addAlbumsToDb(dbAlbumsToInsert);
+  }
+
+  getDbMediaItemIds(dbMediaItemIds: any[]): string[] {
+    return dbMediaItemIds.map((mediaItemId: any) => {
+      return mediaItemId.toString();
+    });
+  }
+  
+  // returns an array of mediaItemIds that represents all the mediaItems in all the albums
+  getAlbumMediaItemIds(): Promise<string[]> {
+    const query = Album.find({});
+    return query.exec().then((results: any) => {
+      const mediaItemIdsInAlbums: [any][any] = results.map((result: any) => {
+        return this.getDbMediaItemIds(result.mediaItemIds);
+      });
+      const uniqueMediaItemIdsInAlbums: string[] = union(...mediaItemIdsInAlbums);
+      return Promise.resolve(uniqueMediaItemIdsInAlbums);
+    });
+  }
+
+  /*
+    compare all the mediaItemIds in all the albums to the mediaItemIds in the db.
+    for each mediaItemId (in the albums), if there's not a corresponding media item in the db,
+    add the mediaItemId found in the album to the list of mediaItems
+    that need to be downloaded. (albumMediaItemIdsNotInDb). also, add mediaItems that are
+    found on the db but whose downloadedProperty is false (rare, if non existent at the moment)
+  */
+  getMediaItemIdsNotInDb(allMediaItems: Document[], mediaItemIdsInAlbums: string[]): string[] {
+
+    const mediaItemsInDbById: Map<string, any> = new Map();
+    allMediaItems.forEach((mediaItem: any) => {
+      mediaItemsInDbById.set(mediaItem.id, mediaItem);
+    });
+
+    const albumMediaItemsInDbToDownload: Map<string, any> = new Map();
+    const albumMediaItemIdsNotInDb: string[] = [];
+
+    mediaItemIdsInAlbums.forEach((mediaItemIdInAlbum) => {
+      const matchingMediaItem: any = mediaItemsInDbById.get(mediaItemIdInAlbum);
+      if (isNil(matchingMediaItem)) {
+        albumMediaItemIdsNotInDb.push(mediaItemIdInAlbum);
+      }
+      else {
+        if (!matchingMediaItem.downloaded) {
+          // mediaItem exists in db; add to map
+          albumMediaItemsInDbToDownload.set(mediaItemIdInAlbum, matchingMediaItem);
+        }
+      }
+    });
+    console.log(albumMediaItemsInDbToDownload);
+    console.log(albumMediaItemIdsNotInDb);
+
+    return albumMediaItemIdsNotInDb;
+  }
+
+  downloadMediaItems(missingMediaItemResults: GoogleMediaItemDownloadResult[]): Promise<void> {
+
+    const mediaItemsToRetrieve: GoogleMediaItem[] = [];
+  
+    missingMediaItemResults.forEach((missingMediaItemResult: GoogleMediaItemDownloadFailureStatus | GoogleMediaItemDownloadMediaItem) => {
+      if (isObject((missingMediaItemResult as any).mediaItem)) {
+        mediaItemsToRetrieve.push((missingMediaItemResult as GoogleMediaItemDownloadMediaItem).mediaItem);
+      }
+    });
+  
+    const processFetchMediaItem = (index: number): Promise<void> => {
+  
+      if (index >= mediaItemsToRetrieve.length) {
+        return Promise.resolve();
+      }
+  
+      const mediaItem: GoogleMediaItem = mediaItemsToRetrieve[index];
+  
+      const id = mediaItem.id;
+      let baseUrl = mediaItem.baseUrl;
+  
+      if (isObject(mediaItem.mediaMetadata)) {
+        const mediaMetadata: any = mediaItem.mediaMetadata;
+        const { width, height } = mediaMetadata;
+        if (isString(width) && isString(height)) {
+          baseUrl += '=w' + width + '-h' + height;
+        }
+      }
+  
+      const fileSuffix = getSuffixFromMimeType(mediaItem.mimeType);
+      const fileName = mediaItem.id + fileSuffix;
+  
+      const baseDir = '/Users/tedshaffer/Documents/Projects/photoJeeves/tmp';
+  
+      return getShardedDirectory(baseDir, mediaItem.id)
+        .then( (shardedDirectory) => {
+          const filePath = path.join(shardedDirectory, fileName);
+          const writer = fse.createWriteStream(filePath);
+          return axios({
+            method: 'get',
+            url: baseUrl,
+            responseType: 'stream',
+        }).then((response: any) => {
+          response.data.pipe(writer);
+          writer.on('finish', () => {
+            return Promise.resolve();
+          });
+          writer.on('error', () => {
+            return Promise.reject();
+          });
+        }).then( () => {
+          return addMediaItemToDb(mediaItem);
+        }).then( () => {
+          return processFetchMediaItem(index + 1);
+        }).catch((err: Error) => {
+          console.log('mediaItem file get/write failed for id:');
+          console.log(id);
+          debugger;
+        });
+      });
+    };
+  
+    return processFetchMediaItem(0);
   }
   
   
@@ -363,6 +483,7 @@ export default class App extends React.Component<any, object> {
   handleSynchronizeAlbums() {
 
     let compositeAlbumsToDownload: CompositeAlbum[];
+    let globalMediaItemIdsInAlbums: string[];
 
     console.log('handleSynchronizeAlbums');
 
@@ -385,7 +506,32 @@ export default class App extends React.Component<any, object> {
         return this.addGoogleAlbumsToDb(compositeAlbumsToDownload);
 
       }).then(() => {
+
+        // get all the mediaItemIds in all albums
+        return this.getAlbumMediaItemIds()
+
+      }).then((mediaItemIdsInAlbums: string[]) => {
+        
+        globalMediaItemIdsInAlbums = mediaItemIdsInAlbums;
+
+        // get all mediaItems that are in the db
+        return getAllMediaItemsInDb();
+
+      }).then((allMediaItems: Document[]) => {
+
+        // create a mapping from mediaItemId to mediaItem for all mediaItems in db
+        const albumMediaItemIdsNotInDb: string[] = this.getMediaItemIdsNotInDb(allMediaItems, globalMediaItemIdsInAlbums);
+        
+        // get the mediaItem metadata for all the mediaItems in an album but not in the db
+        return downloadMediaItemsMetadata(this.accessToken, albumMediaItemIdsNotInDb);
+
+      }).then((missingMediaItemResults: any[]) => {
+
+        // downloadMediaItems, supplying the mediaItem metadata retrieved in the last step.
+        return this.downloadMediaItems(missingMediaItemResults);
+
         debugger;
+
       });
 
   }
