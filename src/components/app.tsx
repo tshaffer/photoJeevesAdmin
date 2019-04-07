@@ -365,7 +365,7 @@ export default class App extends React.Component<any, object> {
       return mediaItemId.toString();
     });
   }
-  
+
   // returns an array of mediaItemIds that represents all the mediaItems in all the albums
   getAlbumMediaItemIds(): Promise<string[]> {
     const query = Album.find({});
@@ -416,24 +416,24 @@ export default class App extends React.Component<any, object> {
   downloadMediaItems(missingMediaItemResults: GoogleMediaItemDownloadResult[]): Promise<void> {
 
     const mediaItemsToRetrieve: GoogleMediaItem[] = [];
-  
+
     missingMediaItemResults.forEach((missingMediaItemResult: GoogleMediaItemDownloadFailureStatus | GoogleMediaItemDownloadMediaItem) => {
       if (isObject((missingMediaItemResult as any).mediaItem)) {
         mediaItemsToRetrieve.push((missingMediaItemResult as GoogleMediaItemDownloadMediaItem).mediaItem);
       }
     });
-  
+
     const processFetchMediaItem = (index: number): Promise<void> => {
-  
+
       if (index >= mediaItemsToRetrieve.length) {
         return Promise.resolve();
       }
-  
+
       const mediaItem: GoogleMediaItem = mediaItemsToRetrieve[index];
-  
+
       const id = mediaItem.id;
       let baseUrl = mediaItem.baseUrl;
-  
+
       if (isObject(mediaItem.mediaMetadata)) {
         const mediaMetadata: any = mediaItem.mediaMetadata;
         const { width, height } = mediaMetadata;
@@ -441,50 +441,50 @@ export default class App extends React.Component<any, object> {
           baseUrl += '=w' + width + '-h' + height;
         }
       }
-  
+
       const fileSuffix = getSuffixFromMimeType(mediaItem.mimeType);
       const fileName = mediaItem.id + fileSuffix;
-  
+
       const baseDir = '/Users/tedshaffer/Documents/Projects/photoJeeves/tmp';
-  
+
       // https://github.com/axios/axios/issues/1474
 
       return getShardedDirectory(baseDir, mediaItem.id)
-        .then( (shardedDirectory) => {
+        .then((shardedDirectory) => {
           const filePath = path.join(shardedDirectory, fileName);
           const writer = fse.createWriteStream(filePath);
           return axios({
             method: 'get',
             url: baseUrl,
             responseType: 'stream',
-        }).then((response: any) => {
-          response.data.pipe(writer);
-          writer.on('finish', () => {
-            return Promise.resolve();
+          }).then((response: any) => {
+            response.data.pipe(writer);
+            writer.on('finish', () => {
+              return Promise.resolve();
+            });
+            writer.on('error', () => {
+              return Promise.reject();
+            });
+          }).then(() => {
+            console.log('new media item download successful');
+            console.log(mediaItem);
+            return addMediaItemToDb(mediaItem);
+          }).then(() => {
+            return processFetchMediaItem(index + 1);
+          }).catch((err: Error) => {
+            // output error info to console and move to next item.
+            console.log('mediaItem file get/write failed for id:');
+            console.log(id);
+            console.log(err);
+            return processFetchMediaItem(index + 1);
           });
-          writer.on('error', () => {
-            return Promise.reject();
-          });
-        }).then( () => {
-          console.log('new media item download successful');
-          console.log(mediaItem);
-          return addMediaItemToDb(mediaItem);
-        }).then( () => {
-          return processFetchMediaItem(index + 1);
-        }).catch((err: Error) => {
-          // output error info to console and move to next item.
-          console.log('mediaItem file get/write failed for id:');
-          console.log(id);
-          console.log(err);
-          return processFetchMediaItem(index + 1);
         });
-      });
     };
-  
+
     return processFetchMediaItem(0);
   }
-  
-  
+
+
   /* Steps
     get detailed information
     get new albums
@@ -532,7 +532,7 @@ export default class App extends React.Component<any, object> {
         return this.getAlbumMediaItemIds()
 
       }).then((mediaItemIdsInAlbums: string[]) => {
-        
+
         globalMediaItemIdsInAlbums = mediaItemIdsInAlbums;
 
         // get all mediaItems that are in the db
@@ -542,7 +542,7 @@ export default class App extends React.Component<any, object> {
 
         // create a mapping from mediaItemId to mediaItem for all mediaItems in db
         const albumMediaItemIdsNotInDb: string[] = this.getMediaItemIdsNotInDb(allMediaItems, globalMediaItemIdsInAlbums);
-        
+
         // get the mediaItem metadata for all the mediaItems in an album but not in the db
         return downloadMediaItemsMetadata(this.accessToken, albumMediaItemIdsNotInDb);
 
@@ -563,9 +563,9 @@ export default class App extends React.Component<any, object> {
   getCachedPhotoFiles(): Promise<string[]> {
     const app = remote.app;
     const desktopPhotoCacheDir = path.join(app.getPath('userData'), 'photoCache');
-    return recursiveReadDir(desktopPhotoCacheDir).then( (rawFiles) => {
+    return recursiveReadDir(desktopPhotoCacheDir).then((rawFiles) => {
       const cachedPhotoFiles: string[] = [];
-      rawFiles.forEach( (rawFile: string) => {
+      rawFiles.forEach((rawFile: string) => {
         if (!this.ignoreFile(rawFile)) {
           cachedPhotoFiles.push(rawFile);
         }
@@ -588,7 +588,7 @@ export default class App extends React.Component<any, object> {
       const shard = shardedFileSpecs[index];
 
       return getShardedDirectory(hdPhotoDir, shard.baseName)
-        .then( (shardedDirectory) => {
+        .then((shardedDirectory) => {
           shard.shardedDirectory = shardedDirectory;
           shard.targetFilePath = path.join(shardedDirectory, shard.fileName);
           return processFileToCopy(index + 1);
@@ -623,9 +623,9 @@ export default class App extends React.Component<any, object> {
     return processFileToCheck(0);
   }
 
-  getFilesToDownload(cachedPhotoFiles: string[]) : Promise<ShardedFileSpec[]> {
+  getFilesToDownload(cachedPhotoFiles: string[]): Promise<ShardedFileSpec[]> {
 
-    const shardedFileSpecs: ShardedFileSpec[] = cachedPhotoFiles.map( (cachedPhotoFilePath: string) => {
+    const shardedFileSpecs: ShardedFileSpec[] = cachedPhotoFiles.map((cachedPhotoFilePath: string) => {
       const extension: string = path.extname(cachedPhotoFilePath);
       const baseName: string = path.basename(cachedPhotoFilePath, extension);
       return {
@@ -636,11 +636,40 @@ export default class App extends React.Component<any, object> {
     });
 
     return this.getTargetPaths(shardedFileSpecs)
-      .then( () => {
+      .then(() => {
         return this.getNewFiles(shardedFileSpecs);
-      }).then( (filesToDownload: string[]) => {
+      }).then((filesToDownload: string[]) => {
         return Promise.resolve(shardedFileSpecs);
       });
+  }
+
+  downloadPhotos(fileSpecs: ShardedFileSpec[]): Promise<void> {
+
+    const processFileToDownload = (index: number): Promise<void> => {
+
+      if (index >= fileSpecs.length) {
+        return Promise.resolve();
+      }
+
+      const shardedFileSpec = fileSpecs[index];
+      const { sourceFilePath, targetFilePath } = shardedFileSpec;
+
+      fse.copy(sourceFilePath, targetFilePath)
+        .then(() => {
+          console.log('file copy success: ', sourceFilePath, targetFilePath);
+          return fse.remove(sourceFilePath);
+        }).then(() => {
+          console.log('file remove success!', sourceFilePath)
+          return processFileToDownload(index + 1);
+        })
+        .catch(err => {
+          console.log('fs error: ', sourceFilePath, targetFilePath);
+          console.error(err);
+          return processFileToDownload(index + 1);
+        })
+    };
+
+    return processFileToDownload(0);
   }
 
   // synchronize files between the desktop hd and the portable hd
@@ -654,6 +683,9 @@ export default class App extends React.Component<any, object> {
       })
       .then((photosToDownload: ShardedFileSpec[]) => {
         console.log(photosToDownload);
+        return this.downloadPhotos(photosToDownload);
+      }).then(() => {
+        console.log('synchronize files complete');
       })
   }
 
@@ -743,7 +775,7 @@ export default class App extends React.Component<any, object> {
     );
   }
 
-  
+
   renderSynchronizeAlbumNamesButton() {
     return (
       <RaisedButton
