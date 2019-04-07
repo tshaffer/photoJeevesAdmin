@@ -5,6 +5,12 @@ import * as path from 'path';
 import axios from 'axios';
 axios.defaults.adapter = require('axios/lib/adapters/http');
 
+const cloudconvert = new (require('cloudconvert'))('njk3d6nMW4YwESyySBwBPDY30DMtwjeXjrvuUMInXBGdG1fWPBO5fgVhDMOsF8LK');
+
+import recursiveReadDir = require('recursive-readdir');
+
+const remote = require('electron').remote;
+
 import { Query, Document } from 'mongoose';
 
 import MuiThemeProvider from 'material-ui/styles/MuiThemeProvider';
@@ -17,7 +23,15 @@ import Album from '../models/album';
 import MediaItem from '../models/mediaItem';
 import { fsLocalFolderExists, fsCreateNestedDirectory, getShardedDirectory, getSuffixFromMimeType } from '../utilities/utilities';
 
-var ObjectId = require('mongoose').Types.ObjectId;
+const ObjectId = require('mongoose').Types.ObjectId;
+
+interface ShardedFileSpec {
+  sourceFilePath: string;
+  targetFilePath?: string;
+  fileName: string;
+  baseName: string;
+  shardedDirectory?: string;
+}
 
 export default class App extends React.Component<any, object> {
 
@@ -38,6 +52,7 @@ export default class App extends React.Component<any, object> {
     };
 
     this.handleSynchronizeAlbums = this.handleSynchronizeAlbums.bind(this);
+    this.handleSynchronizeFiles = this.handleSynchronizeFiles.bind(this);
     this.handleSynchronizeAlbumNames = this.handleSynchronizeAlbumNames.bind(this);
     this.handleGeneratePhotoCollectionManifest = this.handleGeneratePhotoCollectionManifest.bind(this);
     this.handleConvertHeicFiles = this.handleConvertHeicFiles.bind(this);
@@ -46,7 +61,6 @@ export default class App extends React.Component<any, object> {
 
   componentDidMount() {
 
-    const remote = require('electron').remote;
     this.accessToken = (remote.app as any).accessToken;
 
     console.log('componentDidMount');
@@ -541,6 +555,108 @@ export default class App extends React.Component<any, object> {
 
   }
 
+  ignoreFile(file: string): boolean {
+    const ext = path.extname(file);
+    return ext !== '.jpg' && ext !== '.png' && ext != '.heic' && ext != '.heif';
+  }
+
+  getCachedPhotoFiles(): Promise<string[]> {
+    const app = remote.app;
+    const desktopPhotoCacheDir = path.join(app.getPath('userData'), 'photoCache');
+    return recursiveReadDir(desktopPhotoCacheDir).then( (rawFiles) => {
+      const cachedPhotoFiles: string[] = [];
+      rawFiles.forEach( (rawFile: string) => {
+        if (!this.ignoreFile(rawFile)) {
+          cachedPhotoFiles.push(rawFile);
+        }
+      });
+      return Promise.resolve(cachedPhotoFiles);
+    })
+  }
+
+  getTargetPaths(shardedFileSpecs: ShardedFileSpec[]): Promise<void> {
+
+    // const baseDir = '/Users/tedshaffer/Documents/Projects/photoJeeves/tmp';
+    const hdPhotoDir = '/Volumes/SHAFFEROTO/mediaItems';
+
+    const processFileToCopy = (index: number): Promise<void> => {
+
+      if (index >= shardedFileSpecs.length) {
+        return Promise.resolve();
+      }
+
+      const shard = shardedFileSpecs[index];
+
+      return getShardedDirectory(hdPhotoDir, shard.baseName)
+        .then( (shardedDirectory) => {
+          shard.shardedDirectory = shardedDirectory;
+          shard.targetFilePath = path.join(shardedDirectory, shard.fileName);
+          return processFileToCopy(index + 1);
+        });
+    }
+
+    return processFileToCopy(0);
+  }
+
+  getNewFiles(shardedFileSpecs: ShardedFileSpec[]): Promise<string[]> {
+
+    const newFilePaths: string[] = [];
+
+    const processFileToCheck = (index: number): Promise<string[]> => {
+
+      if (index >= shardedFileSpecs.length) {
+        return Promise.resolve(newFilePaths);
+      }
+
+      const shardedFileSpec = shardedFileSpecs[index];
+      const filePathToCheck = shardedFileSpecs[index].targetFilePath;
+
+      return fse.pathExists(filePathToCheck)
+        .then(exists => {
+          if (!exists) {
+            newFilePaths.push(filePathToCheck);
+          }
+          return processFileToCheck(index + 1);
+        }) // => false
+    };
+
+    return processFileToCheck(0);
+  }
+
+  getFilesToDownload(cachedPhotoFiles: string[]) : Promise<ShardedFileSpec[]> {
+
+    const shardedFileSpecs: ShardedFileSpec[] = cachedPhotoFiles.map( (cachedPhotoFilePath: string) => {
+      const extension: string = path.extname(cachedPhotoFilePath);
+      const baseName: string = path.basename(cachedPhotoFilePath, extension);
+      return {
+        sourceFilePath: cachedPhotoFilePath,
+        fileName: baseName + extension,
+        baseName,
+      };
+    });
+
+    return this.getTargetPaths(shardedFileSpecs)
+      .then( () => {
+        return this.getNewFiles(shardedFileSpecs);
+      }).then( (filesToDownload: string[]) => {
+        return Promise.resolve(shardedFileSpecs);
+      });
+  }
+
+  // synchronize files between the desktop hd and the portable hd
+  handleSynchronizeFiles() {
+
+    // get location of contents on desktop hd
+    this.getCachedPhotoFiles()
+      .then((cachedPhotoFiles: string[]) => {
+        console.log(cachedPhotoFiles);
+        return this.getFilesToDownload(cachedPhotoFiles);
+      })
+      .then((photosToDownload: ShardedFileSpec[]) => {
+        console.log(photosToDownload);
+      })
+  }
+
   handleSynchronizeAlbumNames() {
     console.log('handleSynchronizeAlbumNames');
     console.log(this.state.allAlbums);
@@ -615,6 +731,19 @@ export default class App extends React.Component<any, object> {
     );
   }
 
+  renderSynchronizeFilesButton() {
+    return (
+      <RaisedButton
+        label='Sync files'
+        onClick={this.handleSynchronizeFiles}
+        style={{
+          marginLeft: '10px',
+        }}
+      />
+    );
+  }
+
+  
   renderSynchronizeAlbumNamesButton() {
     return (
       <RaisedButton
@@ -713,6 +842,7 @@ export default class App extends React.Component<any, object> {
           {this.renderTitle()}
           {this.renderStatus()}
           {this.renderSynchronizeAlbumsButton()}
+          {this.renderSynchronizeFilesButton()}
           {this.renderSynchronizeAlbumNamesButton()}
           {this.renderGenerateManifests()}
           {this.renderConvertHeicFilesButton()}
