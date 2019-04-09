@@ -95,3 +95,8 @@ export function addMediaItemToDb(mediaItem: GoogleMediaItem): Promise<Document> 
   console.log(id);
   return dbSchemaMediaItem.save();
 }
+
+export function getHeicFiles(): Promise<Document[]> {
+  const query = MediaItem.find({ 'mimeType': 'image/heif' }, 'id fileName');
+  return query.exec();
+}

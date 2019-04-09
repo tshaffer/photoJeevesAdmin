@@ -16,7 +16,7 @@ import { Query, Document } from 'mongoose';
 import MuiThemeProvider from 'material-ui/styles/MuiThemeProvider';
 import RaisedButton from 'material-ui/RaisedButton';
 import { getGoogleAlbums, getAlbumContents, downloadMediaItemsMetadata } from '../utilities/googleInterface';
-import { getDbAlbums, openDb, addAlbumsToDb, getAllMediaItemsInDb, addMediaItemToDb } from '../utilities/dbInterface';
+import { getDbAlbums, openDb, addAlbumsToDb, getAllMediaItemsInDb, addMediaItemToDb, getHeicFiles } from '../utilities/dbInterface';
 import { GoogleAlbum, DbAlbum, AlbumSpec, CompositeAlbumMap, CompositeAlbum, AlbumsByTitle, GoogleMediaItemDownloadResult, GoogleMediaItem, GoogleMediaItemDownloadFailureStatus, GoogleMediaItemDownloadMediaItem } from '../types';
 
 import Album from '../models/album';
@@ -33,6 +33,11 @@ interface ShardedFileSpec {
   shardedDirectory?: string;
 }
 
+interface HeicFileToConvert {
+  dbId: string;
+  heicFileDocument: Document;
+  filePath: string;
+}
 export default class App extends React.Component<any, object> {
 
   accessToken: string = '';
@@ -71,6 +76,12 @@ export default class App extends React.Component<any, object> {
 
     openDb().then(() => {
       this.getAlbumStatus();
+    });
+  }
+
+  updateStatus(status: string) {
+    this.setState({
+      status
     });
   }
 
@@ -726,164 +737,245 @@ export default class App extends React.Component<any, object> {
     this.generateManifestFiles();
   }
 
-  handleConvertHeicFiles() {
-    console.log('handleConvertHeicFiles');
-  }
+  convertHeicFiles(heicFilesToConvert: HeicFileToConvert[]) {
 
-  handleAuditPhotos() {
-    console.log('handleAuditPhotos');
-  }
+    const maxToDownload = 25;
 
-  updateStatus(status: string) {
-    this.setState({
-      status
-    });
-  }
+    const baseDir = '/Volumes/SHAFFEROTO/mediaItems';
 
-  renderTitle() {
-    return (
-      <h1>Photo Jeeves</h1>
-    )
-  }
+    var convertHeicToJpg = (heicMediaItemIndex: number) => {
 
-  renderStatus() {
-    return (
-      <p>
-        {this.state.status}
-      </p>
-    )
-  }
+      if (heicMediaItemIndex >= heicFilesToConvert.length || heicMediaItemIndex >= maxToDownload) {
+        return Promise.resolve();
+      }
 
-  renderSynchronizeAlbumsButton() {
-    return (
-      <RaisedButton
-        label='Sync content'
-        onClick={this.handleSynchronizeAlbums}
-      />
-    );
-  }
+      const heicFileToConvert: HeicFileToConvert = heicFilesToConvert[heicMediaItemIndex];
+      
+      // const dbId = heicFileToConvert.dbId;
+      const inputFilePath = heicFileToConvert.filePath;
 
-  renderSynchronizeFilesButton() {
-    return (
-      <RaisedButton
-        label='Sync files'
-        onClick={this.handleSynchronizeFiles}
-        style={{
-          marginLeft: '10px',
-        }}
-      />
-    );
-  }
+      const extension: string = path.extname(inputFilePath);   // should be .heic
+      const baseName: string = path.basename(inputFilePath, extension);
+      const fileName: string = baseName + '.heic';
 
+      return getShardedDirectory(baseDir, baseName)
+        .then((shardedDirectory) => {
+          const outputFilePath = path.join(shardedDirectory, fileName);
 
-  renderSynchronizeAlbumNamesButton() {
-    return (
-      <RaisedButton
-        label='Sync album names'
-        onClick={this.handleSynchronizeAlbumNames}
-        style={{
-          marginLeft: '10px',
-        }}
-      />
-    );
-  }
+          fse.createReadStream(inputFilePath).pipe(cloudconvert.convert({
+            "input": "upload",
+            "inputformat": "heic",
+            "outputformat": "jpg",
+            "converteroptions.quality": {
+              "quality": "100"
+            }
+          })).pipe(fse.createWriteStream(outputFilePath)
+            .on('finish', function () {
+              console.log('conversion complete: ', outputFilePath);
+  
+              // update the mimeType of the converted file.
+              (heicFileToConvert.heicFileDocument as any).mimeType = 'image/jpeg';
+              heicFileToConvert.heicFileDocument.save();
 
-  renderGenerateManifests() {
-    return (
-      <RaisedButton
-        label='Generate Manifests'
-        onClick={this.handleGeneratePhotoCollectionManifest}
-        style={{
-          marginLeft: '10px',
-        }}
-      />
-    );
-  }
+              // MediaItem.update({ id: dbId }, { $set: { mimeType: 'image/jpeg' } }, function () {
+              //   console.log('db update complete for: ', dbId);
+              // });
 
-  renderConvertHeicFilesButton() {
-    return (
-      <RaisedButton
-        label='Convert Heic'
-        onClick={this.handleConvertHeicFiles}
-        style={{
-          marginLeft: '10px',
-        }}
-      />
-    );
-  }
-
-  renderAuditPhotosButton() {
-    return (
-      <RaisedButton
-        label='Audit Photos'
-        onClick={this.handleAuditPhotos}
-        style={{
-          marginLeft: '10px',
-        }}
-      />
-    );
-  }
-
-  renderAlbumRow(albumNames: AlbumSpec, index: number) {
-    return (
-      <tr key={index}>
-        <td>{albumNames.googleAlbumTitle}</td>
-        <td>{albumNames.dbAlbumTitle}</td>
-      </tr>
-    );
-  }
-
-  renderAlbumRows() {
-    return this.state.allAlbums.map((albumNames: AlbumSpec, index: number) => {
-      return this.renderAlbumRow(albumNames, index);
-    });
-  }
-
-  renderAlbumList() {
-
-    if (this.state.allAlbums.length === 0) {
-      return null;
+              convertHeicToJpg(heicMediaItemIndex + 1);
+            })
+            .on('error', (errorArgument: any) => {
+              console.log(errorArgument);
+              convertHeicToJpg(heicMediaItemIndex + 1);
+            }));
+        });
     }
 
-    return (
-      <table
-        style={{
-          marginTop: '10px',
-        }}
-      >
-        <thead>
-          <tr>
-            <th>Google Album Name</th>
-            <th>Db Album Name</th>
-          </tr>
-        </thead>
-        <tbody>
-          {this.renderAlbumRows()}
-        </tbody>
-      </table>
-    );
+    return convertHeicToJpg(0);
   }
 
-  render() {
+getFilesToConvert(): Promise<HeicFileToConvert[]> {
 
-    const self = this;
+  const heicFilesToConvert: HeicFileToConvert[] = [];
+  
+  return this.getCachedPhotoFiles()
+    .then((allCachedFiles: string[]) => {
+      return getHeicFiles()
+    .then((heicFileDocuments: Document[])=> {
+      heicFileDocuments.forEach( (heicFileDocument: Document) => {
+        const id = heicFileDocument.id;
+        allCachedFiles.forEach( (cachedFilePath: string) => {
+          const extension: string = path.extname(cachedFilePath);   // should be .heic
+          const baseName: string = path.basename(cachedFilePath, extension);
+          // const fileName: string = baseName + '.heic';
+          if (id === baseName) {
+            heicFilesToConvert.push( {
+              dbId: id,
+              heicFileDocument,
+              filePath: cachedFilePath
+            });
+          }
+        })
+      });
+      return Promise.resolve(heicFilesToConvert);
+    })
+  });
+}
 
-    return (
-      <MuiThemeProvider>
-        <div>
-          {this.renderTitle()}
-          {this.renderStatus()}
-          {this.renderSynchronizeAlbumsButton()}
-          {this.renderSynchronizeFilesButton()}
-          {this.renderSynchronizeAlbumNamesButton()}
-          {this.renderGenerateManifests()}
-          {this.renderConvertHeicFilesButton()}
-          {this.renderAuditPhotosButton()}
-          <br></br>
-          {this.renderAlbumList()}
-          <br></br>
-        </div>
-      </MuiThemeProvider>
-    );
+handleConvertHeicFiles() {
+  this.getFilesToConvert()
+    .then( (heicFilesToConvert: HeicFileToConvert[]) => {
+      this.convertHeicFiles(heicFilesToConvert);
+    });
+}
+
+handleAuditPhotos() {
+  console.log('handleAuditPhotos');
+}
+
+renderTitle() {
+  return (
+    <h1>Photo Jeeves</h1>
+  )
+}
+
+renderStatus() {
+  return (
+    <p>
+      {this.state.status}
+    </p>
+  )
+}
+
+renderSynchronizeAlbumsButton() {
+  return (
+    <RaisedButton
+      label='Sync content'
+      onClick={this.handleSynchronizeAlbums}
+    />
+  );
+}
+
+renderSynchronizeFilesButton() {
+  return (
+    <RaisedButton
+      label='Sync files'
+      onClick={this.handleSynchronizeFiles}
+      style={{
+        marginLeft: '10px',
+      }}
+    />
+  );
+}
+
+
+renderSynchronizeAlbumNamesButton() {
+  return (
+    <RaisedButton
+      label='Sync album names'
+      onClick={this.handleSynchronizeAlbumNames}
+      style={{
+        marginLeft: '10px',
+      }}
+    />
+  );
+}
+
+renderGenerateManifests() {
+  return (
+    <RaisedButton
+      label='Generate Manifests'
+      onClick={this.handleGeneratePhotoCollectionManifest}
+      style={{
+        marginLeft: '10px',
+      }}
+    />
+  );
+}
+
+renderConvertHeicFilesButton() {
+  return (
+    <RaisedButton
+      label='Convert Heic'
+      onClick={this.handleConvertHeicFiles}
+      style={{
+        marginLeft: '10px',
+      }}
+    />
+  );
+}
+
+renderAuditPhotosButton() {
+  return (
+    <RaisedButton
+      label='Audit Photos'
+      onClick={this.handleAuditPhotos}
+      style={{
+        marginLeft: '10px',
+      }}
+    />
+  );
+}
+
+renderAlbumRow(albumNames: AlbumSpec, index: number) {
+  return (
+    <tr key={index}>
+      <td>{albumNames.googleAlbumTitle}</td>
+      <td>{albumNames.dbAlbumTitle}</td>
+    </tr>
+  );
+}
+
+renderAlbumRows() {
+  return this.state.allAlbums.map((albumNames: AlbumSpec, index: number) => {
+    return this.renderAlbumRow(albumNames, index);
+  });
+}
+
+renderAlbumList() {
+
+  if (this.state.allAlbums.length === 0) {
+    return null;
   }
+
+  return (
+    <table
+      style={{
+        marginTop: '10px',
+      }}
+    >
+      <thead>
+        <tr>
+          <th>Google Album Name</th>
+          <th>Db Album Name</th>
+        </tr>
+      </thead>
+      <tbody>
+        {this.renderAlbumRows()}
+      </tbody>
+    </table>
+  );
+}
+
+render() {
+
+  const self = this;
+
+  return (
+    <MuiThemeProvider>
+      <div>
+        {this.renderTitle()}
+        {this.renderStatus()}
+        {this.renderSynchronizeAlbumsButton()}
+        {this.renderSynchronizeFilesButton()}
+        {this.renderSynchronizeAlbumNamesButton()}
+        {this.renderGenerateManifests()}
+        {this.renderConvertHeicFilesButton()}
+        {this.renderAuditPhotosButton()}
+        <br></br>
+        {this.renderAlbumList()}
+        <br></br>
+      </div>
+    </MuiThemeProvider>
+  );
+}
 }
