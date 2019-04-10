@@ -751,16 +751,21 @@ export default class App extends React.Component<any, object> {
 
       const heicFileToConvert: HeicFileToConvert = heicFilesToConvert[heicMediaItemIndex];
       
-      // const dbId = heicFileToConvert.dbId;
       const inputFilePath = heicFileToConvert.filePath;
 
       const extension: string = path.extname(inputFilePath);   // should be .heic
       const baseName: string = path.basename(inputFilePath, extension);
-      const fileName: string = baseName + '.heic';
+      const fileName: string = baseName + '.jpg';
+
+      const dbFileName = (heicFileToConvert.heicFileDocument as any).fileName;
+      const convertedDbFileName = dbFileName.substring(0, dbFileName.length - 4) + 'jpg';
+      console.log(convertedDbFileName);
 
       return getShardedDirectory(baseDir, baseName)
         .then((shardedDirectory) => {
           const outputFilePath = path.join(shardedDirectory, fileName);
+
+          console.log('convert file: ', inputFilePath);
 
           fse.createReadStream(inputFilePath).pipe(cloudconvert.convert({
             "input": "upload",
@@ -775,11 +780,8 @@ export default class App extends React.Component<any, object> {
   
               // update the mimeType of the converted file.
               (heicFileToConvert.heicFileDocument as any).mimeType = 'image/jpeg';
+              (heicFileToConvert.heicFileDocument as any).fileName = convertedDbFileName;
               heicFileToConvert.heicFileDocument.save();
-
-              // MediaItem.update({ id: dbId }, { $set: { mimeType: 'image/jpeg' } }, function () {
-              //   console.log('db update complete for: ', dbId);
-              // });
 
               convertHeicToJpg(heicMediaItemIndex + 1);
             })
