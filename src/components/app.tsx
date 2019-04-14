@@ -210,7 +210,9 @@ export default class App extends React.Component<any, object> {
     for (const albumName in albums) {
       if (albums.hasOwnProperty(albumName)) {
         const title = albumName;
-        const photoCount = albums[albumName].length;
+        const albumSpec = albums[albumName];
+        const photoIds = albumSpec.mediaItemIds;
+        const photoCount = photoIds.length;      
         photoJeevesAlbums.push({
           title,
           photoCount,
@@ -573,8 +575,7 @@ export default class App extends React.Component<any, object> {
   }
 
   getCachedPhotoFiles(): Promise<string[]> {
-    const app = remote.app;
-    const desktopPhotoCacheDir = path.join(app.getPath('userData'), 'photoCache');
+    const desktopPhotoCacheDir = path.join(userDataBaseDir, 'photoCache');
     return recursiveReadDir(desktopPhotoCacheDir).then((rawFiles) => {
       const cachedPhotoFiles: string[] = [];
       rawFiles.forEach((rawFile: string) => {
