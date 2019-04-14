@@ -38,6 +38,10 @@ interface HeicFileToConvert {
   heicFileDocument: Document;
   filePath: string;
 }
+
+const userDataBaseDir: string = path.join(remote.app.getPath('userData'), 'appData');
+console.log('user data directory: ', userDataBaseDir);
+
 export default class App extends React.Component<any, object> {
 
   accessToken: string = '';
@@ -59,7 +63,7 @@ export default class App extends React.Component<any, object> {
     this.handleSynchronizeAlbums = this.handleSynchronizeAlbums.bind(this);
     this.handleSynchronizeFiles = this.handleSynchronizeFiles.bind(this);
     this.handleSynchronizeAlbumNames = this.handleSynchronizeAlbumNames.bind(this);
-    this.handleGeneratePhotoCollectionManifest = this.handleGeneratePhotoCollectionManifest.bind(this);
+    this.handleGenerateManifests = this.handleGenerateManifests.bind(this);
     this.handleConvertHeicFiles = this.handleConvertHeicFiles.bind(this);
     this.handleAuditPhotos = this.handleAuditPhotos.bind(this);
   }
@@ -133,7 +137,9 @@ export default class App extends React.Component<any, object> {
     });
   }
 
-  generatePhotoCollectionManifest(filePath: string): Promise<void> {
+  generatePhotoCollectionManifest(): Promise<void> {
+
+    const manifestPath = path.join(userDataBaseDir, 'photoCollectionManifest.json');
 
     const mediaItemsQuery = MediaItem.find({});
     return mediaItemsQuery.exec()
@@ -174,7 +180,7 @@ export default class App extends React.Component<any, object> {
               albums: albumItemsByAlbumName,
             };
             const json = JSON.stringify(manifestFile, null, 2);
-            fse.writeFile(filePath, json, 'utf8', (err) => {
+            fse.writeFile(manifestPath, json, 'utf8', (err) => {
               if (err) {
                 console.log('err');
                 console.log(err);
@@ -189,19 +195,18 @@ export default class App extends React.Component<any, object> {
 
   }
 
-  generateAlbumsList(filePath: string) {
+  generateAlbumsManifest() {
 
-    const manifestPath = '/Users/tedshaffer/Documents/Projects/sinker/photoCollectionManifest.json';
-
-    const manifestContents = fse.readFileSync(manifestPath);
+    const photoCollectionManifestPath = path.join(userDataBaseDir, 'photoCollectionManifest.json');
+    const albumsManifestPath = path.join(userDataBaseDir, 'albumsManifest.json');
+    
+    const manifestContents = fse.readFileSync(photoCollectionManifestPath);
     // attempt to convert buffer to string resulted in Maximum Call Stack exceeded
     const photoManifest = JSON.parse(manifestContents as any);
-    console.log(photoManifest);
 
     const photoJeevesAlbums: any[] = [];
 
     const albums = photoManifest.albums;
-
     for (const albumName in albums) {
       if (albums.hasOwnProperty(albumName)) {
         const title = albumName;
@@ -218,32 +223,28 @@ export default class App extends React.Component<any, object> {
     };
 
     const json = JSON.stringify(photoJeevesAlbumsSpec, null, 2);
-    fse.writeFile('photoJeevesAlbums.json', json, 'utf8', (err) => {
+    fse.writeFile(albumsManifestPath, json, 'utf8', (err) => {
       if (err) {
         console.log('err');
         console.log(err);
       }
       else {
-        console.log('photoJeevesAlbums.json successfully written');
+        console.log('albumsManifest.json successfully written');
       }
     });
   }
 
-  generateManifestFiles() {
-    const adminPath = '/Users/tedshaffer/Documents/Projects/photoJeeves/admin';
-    const manifestPath = path.join(adminPath, 'photoCollectionManifest.json');
-    this.generatePhotoCollectionManifest(manifestPath).then(() => {
-      console.log('photoCollectionManifest.json written');
-      const albumsPath = path.join(adminPath, 'photoJeevesAlbums.json');
-      this.generateAlbumsList(albumsPath);
+  generateManifests() {
+    this.generatePhotoCollectionManifest().then(() => {
+      this.generateAlbumsManifest();
     })
   }
 
   getAlbumsListFromManifest(): AlbumsByTitle {
 
-    const manifestPath = '/Users/tedshaffer/Documents/Projects/photoJeeves/admin/photoCollectionManifest.json';
+    const photoCollectionManifestPath = path.join(userDataBaseDir, 'photoCollectionManifest.json');
 
-    const manifestContents = fse.readFileSync(manifestPath);
+    const manifestContents = fse.readFileSync(photoCollectionManifestPath);
     // attempt to convert buffer to string resulted in Maximum Call Stack exceeded
     const photoManifest = JSON.parse(manifestContents as any);
     console.log(photoManifest);
@@ -732,9 +733,9 @@ export default class App extends React.Component<any, object> {
     })
   }
 
-  handleGeneratePhotoCollectionManifest() {
-    console.log('handleGeneratePhotoCollectionManifest');
-    this.generateManifestFiles();
+  handleGenerateManifests() {
+    console.log('handleGenerateManifests');
+    this.generateManifests();
   }
 
   convertHeicFiles(heicFilesToConvert: HeicFileToConvert[]) {
@@ -886,7 +887,7 @@ renderGenerateManifests() {
   return (
     <RaisedButton
       label='Generate Manifests'
-      onClick={this.handleGeneratePhotoCollectionManifest}
+      onClick={this.handleGenerateManifests}
       style={{
         marginLeft: '10px',
       }}
