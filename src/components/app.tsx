@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { isNil, union, isObject, isString } from 'lodash';
-import * as fse from 'fs-extra';
+import * as fs from 'fs-extra';
 import * as path from 'path';
 import axios from 'axios';
 axios.defaults.adapter = require('axios/lib/adapters/http');
@@ -142,7 +142,6 @@ export default class App extends React.Component<any, object> {
   }
 
   generatePhotoCollectionManifest(): Promise<void> {
-
     const mediaItemsQuery = MediaItem.find({});
     return mediaItemsQuery.exec()
       .then((mediaItemQueryResults: any) => {
@@ -182,24 +181,14 @@ export default class App extends React.Component<any, object> {
               albums: albumItemsByAlbumName,
             };
             const json = JSON.stringify(manifestFile, null, 2);
-            fse.writeFile(photoCollectionManifestPath, json, 'utf8', (err) => {
-              if (err) {
-                console.log('err');
-                console.log(err);
-              }
-              else {
-                console.log('photoCollectionManifest.json successfully written');
-              }
-              return;
-            });
+            return fs.writeFile(photoCollectionManifestPath, json, 'utf8');
           });
       });
-
   }
 
   generateAlbumsManifest() {
     
-    const manifestContents = fse.readFileSync(photoCollectionManifestPath);
+    const manifestContents = fs.readFileSync(photoCollectionManifestPath);
     // attempt to convert buffer to string resulted in Maximum Call Stack exceeded
     const photoManifest = JSON.parse(manifestContents as any);
 
@@ -224,7 +213,7 @@ export default class App extends React.Component<any, object> {
     };
 
     const json = JSON.stringify(photoJeevesAlbumsSpec, null, 2);
-    fse.writeFile(albumsManifestPath, json, 'utf8', (err) => {
+    fs.writeFile(albumsManifestPath, json, 'utf8', (err) => {
       if (err) {
         console.log('err');
         console.log(err);
@@ -236,14 +225,14 @@ export default class App extends React.Component<any, object> {
   }
 
   generateManifests() {
-    // this.generatePhotoCollectionManifest().then(() => {
+    this.generatePhotoCollectionManifest().then(() => {
       this.generateAlbumsManifest();
-    // })
+    })
   }
 
   getAlbumsListFromManifest(): AlbumsByTitle {
 
-    const manifestContents = fse.readFileSync(photoCollectionManifestPath);
+    const manifestContents = fs.readFileSync(photoCollectionManifestPath);
     // attempt to convert buffer to string resulted in Maximum Call Stack exceeded
     const photoManifest = JSON.parse(manifestContents as any);
     console.log(photoManifest);
@@ -463,7 +452,7 @@ export default class App extends React.Component<any, object> {
       return getShardedDirectory(baseDir, mediaItem.id)
         .then((shardedDirectory) => {
           const filePath = path.join(shardedDirectory, fileName);
-          const writer = fse.createWriteStream(filePath);
+          const writer = fs.createWriteStream(filePath);
           return axios({
             method: 'get',
             url: baseUrl,
@@ -621,7 +610,7 @@ export default class App extends React.Component<any, object> {
       const shardedFileSpec = shardedFileSpecs[index];
       const filePathToCheck = shardedFileSpecs[index].targetFilePath;
 
-      return fse.pathExists(filePathToCheck)
+      return fs.pathExists(filePathToCheck)
         .then(exists => {
           if (!exists) {
             newFilePaths.push(filePathToCheck);
@@ -664,10 +653,10 @@ export default class App extends React.Component<any, object> {
       const shardedFileSpec = fileSpecs[index];
       const { sourceFilePath, targetFilePath } = shardedFileSpec;
 
-      fse.copy(sourceFilePath, targetFilePath)
+      fs.copy(sourceFilePath, targetFilePath)
         .then(() => {
           console.log('file copy success: ', sourceFilePath, targetFilePath);
-          return fse.remove(sourceFilePath);
+          return fs.remove(sourceFilePath);
         }).then(() => {
           console.log('file remove success!', sourceFilePath)
           return processFileToDownload(index + 1);
@@ -766,14 +755,14 @@ export default class App extends React.Component<any, object> {
 
           console.log('convert file: ', inputFilePath);
 
-          fse.createReadStream(inputFilePath).pipe(cloudconvert.convert({
+          fs.createReadStream(inputFilePath).pipe(cloudconvert.convert({
             "input": "upload",
             "inputformat": "heic",
             "outputformat": "jpg",
             "converteroptions.quality": {
               "quality": "100"
             }
-          })).pipe(fse.createWriteStream(outputFilePath)
+          })).pipe(fs.createWriteStream(outputFilePath)
             .on('finish', function () {
               console.log('conversion complete: ', outputFilePath);
   
