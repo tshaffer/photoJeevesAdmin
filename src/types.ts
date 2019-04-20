@@ -1,3 +1,5 @@
+import { Document } from 'mongoose';
+
 export interface Dict<T> {
   [id: string]: T;
 }
@@ -9,17 +11,6 @@ export interface AlbumSpec {
   dbAlbumId?: string;
   dbAlbumTitle?: string;
 }
-
-
-// investigate map as alternative to Dict
-// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map
-
-// export type GoogleAlbumsContentsByAlbumIdMap = Dict<GoogleAlbum> | {};
-
-// export interface GoogleAlbumData {
-//   googleAlbums: GoogleAlbum[];
-//   albumContentsByAlbumId: GoogleAlbumsContentsByAlbumIdMap;
-// }
 
 export interface PhotoStatus {
   googleAlbumsNotDownloaded: GoogleAlbum[];
@@ -132,6 +123,20 @@ export interface AlbumsByTitle {
 
 export interface CompositeAlbumMap {
   [id: string]: CompositeAlbum;
+}
+
+export interface ShardedFileSpec {
+  sourceFilePath: string;
+  targetFilePath?: string;
+  fileName: string;
+  baseName: string;
+  shardedDirectory?: string;
+}
+
+export interface HeicFileToConvert {
+  dbId: string;
+  heicFileDocument: Document;
+  filePath: string;
 }
 
 

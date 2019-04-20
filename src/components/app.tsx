@@ -17,34 +17,23 @@ import MuiThemeProvider from 'material-ui/styles/MuiThemeProvider';
 import RaisedButton from 'material-ui/RaisedButton';
 import { getGoogleAlbums, getAlbumContents, downloadMediaItemsMetadata } from '../utilities/googleInterface';
 import { getDbAlbums, openDb, addAlbumsToDb, getAllMediaItemsInDb, addMediaItemToDb, getHeicFiles } from '../utilities/dbInterface';
-import { GoogleAlbum, DbAlbum, AlbumSpec, CompositeAlbumMap, CompositeAlbum, AlbumsByTitle, GoogleMediaItemDownloadResult, GoogleMediaItem, GoogleMediaItemDownloadFailureStatus, GoogleMediaItemDownloadMediaItem } from '../types';
+import { GoogleAlbum, DbAlbum, AlbumSpec, CompositeAlbumMap, CompositeAlbum, AlbumsByTitle, GoogleMediaItemDownloadResult, GoogleMediaItem, GoogleMediaItemDownloadFailureStatus, GoogleMediaItemDownloadMediaItem, ShardedFileSpec, HeicFileToConvert } from '../types';
 
 import Album from '../models/album';
 import MediaItem from '../models/mediaItem';
-import { fsLocalFolderExists, fsCreateNestedDirectory, getShardedDirectory, getSuffixFromMimeType } from '../utilities/utilities';
+import { getShardedDirectory, getSuffixFromMimeType } from '../utilities/utilities';
 
 const ObjectId = require('mongoose').Types.ObjectId;
-
-interface ShardedFileSpec {
-  sourceFilePath: string;
-  targetFilePath?: string;
-  fileName: string;
-  baseName: string;
-  shardedDirectory?: string;
-}
-
-interface HeicFileToConvert {
-  dbId: string;
-  heicFileDocument: Document;
-  filePath: string;
-}
 
 const userDataBaseDir: string = path.join(remote.app.getPath('userData'), 'appData');
 const photoCollectionManifestPath = path.join(userDataBaseDir, 'photoCollectionManifest.json');
 const albumsManifestPath = path.join(userDataBaseDir, 'albumsManifest.json');
+const portableHDMediaItemsBaseDir = '/Volumes/SHAFFEROTO/mediaItems';
+
 console.log('user data directory: ', userDataBaseDir);
 console.log('manifestPath: ', photoCollectionManifestPath);
 console.log('albumsManifestPath: ', albumsManifestPath);
+console.log('portableHDMediaItemsBaseDir: ', portableHDMediaItemsBaseDir);
 
 export default class App extends React.Component<any, object> {
 
@@ -186,7 +175,7 @@ export default class App extends React.Component<any, object> {
       });
   }
 
-  generateAlbumsManifest() {
+  generateAlbumsManifest(): Promise<void> {
     
     const manifestContents = fs.readFileSync(photoCollectionManifestPath);
     // attempt to convert buffer to string resulted in Maximum Call Stack exceeded
@@ -213,15 +202,7 @@ export default class App extends React.Component<any, object> {
     };
 
     const json = JSON.stringify(photoJeevesAlbumsSpec, null, 2);
-    fs.writeFile(albumsManifestPath, json, 'utf8', (err) => {
-      if (err) {
-        console.log('err');
-        console.log(err);
-      }
-      else {
-        console.log('albumsManifest.json successfully written');
-      }
-    });
+    return fs.writeFile(albumsManifestPath, json, 'utf8');
   }
 
   generateManifests() {
@@ -729,8 +710,6 @@ export default class App extends React.Component<any, object> {
 
     const maxToDownload = 25;
 
-    const baseDir = '/Volumes/SHAFFEROTO/mediaItems';
-
     var convertHeicToJpg = (heicMediaItemIndex: number) => {
 
       if (heicMediaItemIndex >= heicFilesToConvert.length || heicMediaItemIndex >= maxToDownload) {
@@ -749,7 +728,7 @@ export default class App extends React.Component<any, object> {
       const convertedDbFileName = dbFileName.substring(0, dbFileName.length - 4) + 'jpg';
       console.log(convertedDbFileName);
 
-      return getShardedDirectory(baseDir, baseName)
+      return getShardedDirectory(portableHDMediaItemsBaseDir, baseName)
         .then((shardedDirectory) => {
           const outputFilePath = path.join(shardedDirectory, fileName);
 
