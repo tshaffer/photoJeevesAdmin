@@ -807,6 +807,19 @@ renderTitle() {
   )
 }
 
+renderWorkflowDescription() {
+  return (
+    <div>
+      <h2>Workflow</h2>
+      <p>Use the Photo Jeeves admin tool after making any of the following changes to your Google Photos account: creating a new album;
+        modifying the contents of an existing album; or renaming an existing album. After creating a new album or modifying the content
+        of an existing album, invoke 'Sync desktop to cloud' followed by 'Generate manifests'. Perform the manual steps indicated after new
+        manifest files are generated. Finally invoke 'Sync desktop to portable hd'. 
+        In certain circumstances, you'll also need to invoke 'Convert Heic Files'. </p>
+    </div>
+  )
+}
+
 renderStatus() {
   return (
     <p>
@@ -818,7 +831,7 @@ renderStatus() {
 renderSynchronizeAlbumsButton() {
   return (
     <RaisedButton
-      label='Sync content'
+      label='Sync desktop to cloud'
       onClick={this.handleSynchronizeAlbums}
     />
   );
@@ -845,7 +858,7 @@ renderSynchronizeAlbums() {
 renderSynchronizeFilesButton() {
   return (
     <RaisedButton
-      label='Sync files'
+      label='Sync desktop to portable hd'
       onClick={this.handleSynchronizeFiles}
       style={{
         marginLeft: '0px',
@@ -942,7 +955,7 @@ renderGenerateManifests() {
 renderConvertHeicFilesButton() {
   return (
     <RaisedButton
-      label='Convert Heic'
+      label='Convert Heic Files'
       onClick={this.handleConvertHeicFiles}
       style={{
         marginLeft: '0px',
@@ -1051,11 +1064,12 @@ render() {
       <div>
         {this.renderTitle()}
         {this.renderStatus()}
+        {this.renderWorkflowDescription()}
         {this.renderSynchronizeAlbums()}
-        {this.renderSynchronizeFiles()}
-        {this.renderSynchronizeAlbumNames()}
         {this.renderGenerateManifests()}
+        {this.renderSynchronizeFiles()}
         {this.renderConvertHeicFiles()}
+        {this.renderSynchronizeAlbumNames()}
         {this.renderAuditPhotos()}
       </div>
     </MuiThemeProvider>
