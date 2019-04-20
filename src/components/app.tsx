@@ -824,18 +824,54 @@ renderSynchronizeAlbumsButton() {
   );
 }
 
+renderSynchronizeAlbumsExplanation() {
+  return (
+    <p>Invoke this function when you have updated albums and/or content in the cloud and want to see
+      updated content in Photo Jeeves. This function detects new and updated albums in the cloud, updates
+      the database with the information for the albums as well as the album contents. It determines what photo
+      files need to be downloaded from the cloud to the desktop hard drive and downloads them. Does it in fact 
+      download new albums, or not as indicated earlier in the code?</p>
+  )
+}
+renderSynchronizeAlbums() {
+  return (
+    <div>
+      {this.renderSynchronizeAlbumsButton()}
+      {this.renderSynchronizeAlbumsExplanation()}
+    </div>
+  )
+}
+
 renderSynchronizeFilesButton() {
   return (
     <RaisedButton
       label='Sync files'
       onClick={this.handleSynchronizeFiles}
       style={{
-        marginLeft: '10px',
+        marginLeft: '0px',
       }}
     />
   );
 }
 
+renderSynchronizeFilesExplanation() {
+  return (
+    <p>This function synchronizes photo files between the desktop hard drive and the portable hard drive. It does
+      not modify or copy the manifest files. Use this function after downloading new content from the cloud. In order to
+      see the new files in the alexa app, you will also need to regenerate the manifest files and update them as described in the
+      'Generate Manifest Files' description.
+       </p>
+  )
+}
+
+renderSynchronizeFiles() {
+  return (
+    <div>
+      {this.renderSynchronizeFilesButton()}
+      {this.renderSynchronizeFilesExplanation()}
+    </div>
+  )
+}
 
 renderSynchronizeAlbumNamesButton() {
   return (
@@ -843,23 +879,65 @@ renderSynchronizeAlbumNamesButton() {
       label='Sync album names'
       onClick={this.handleSynchronizeAlbumNames}
       style={{
-        marginLeft: '10px',
+        marginLeft: '0px',
       }}
     />
   );
 }
 
-renderGenerateManifests() {
+renderSynchronizeAlbumNamesExplanation() {
+  return (
+    <p>Invoke synchronize album names when you have renamed an album in Google Photos 
+      that you had already loaded into Photo Jeeves. This function 
+      synchronizes the album names in the data base with the album names in the cloud. After 
+      performing this step, invoke Generate Manifests to update the associated manifest files.
+      This function only updates the database; it does not write to the cloud or the portable
+      hard drive.</p>
+  )
+}
+
+renderSynchronizeAlbumNames() {
+  return (
+    <div>
+      {this.renderSynchronizeAlbumNamesButton()}
+      {this.renderSynchronizeAlbumNamesExplanation()}
+    </div>
+  )
+}
+
+
+renderGenerateManifestsButton() {
   return (
     <RaisedButton
       label='Generate Manifests'
       onClick={this.handleGenerateManifests}
       style={{
-        marginLeft: '10px',
+        marginLeft: '0px',
       }}
     />
   );
 }
+
+renderGenerateManifestsExplanation() {
+  return (
+    <p>This function generates updated photos and albums manifest files. Use this function after performing any
+      functions that update the database, either the photos records or the albums records. This function reads
+      from the database and writes to the local application directory. After invoking this function, you must manually
+      copy photoCollectionManifest.json to the portable hard drive and copy albumsManifest.json to both the scripts folder
+      and the SD card, and to the Alexa app, after which you must reinvoke 'ask deploy' on the Alexa app.
+    </p>
+  )
+}
+
+renderGenerateManifests() {
+  return (
+    <div>
+      {this.renderGenerateManifestsButton()}
+      {this.renderGenerateManifestsExplanation()}
+    </div>
+  )
+}
+
 
 renderConvertHeicFilesButton() {
   return (
@@ -867,10 +945,32 @@ renderConvertHeicFilesButton() {
       label='Convert Heic'
       onClick={this.handleConvertHeicFiles}
       style={{
-        marginLeft: '10px',
+        marginLeft: '0px',
       }}
     />
   );
+}
+
+renderConvertHeicFilesExplanation() {
+  return (
+    <p>Invoke this function when you have downloaded content that includes heic files. Use it after
+      invoking 'Sync content' but before invoking 'Sync files'. In other words, after the files have been
+      downloaded to the desktop but before downloading to the portable hard drive. This function invokes
+      a cloud service to convert the files, and the converted files are written to the desktop hard drive's 
+      photo cache. Once a file is converted and written to the desktop, the database is updated. Note - this function may
+      not convert all the Heic files at once, as the cloud service only permits 20 conversions per day.
+      The function needs to be updated to delete the original heic files in the photo cache.
+    </p>
+  )
+}
+
+renderConvertHeicFiles() {
+  return (
+    <div>
+      {this.renderConvertHeicFilesButton()}
+      {this.renderConvertHeicFilesExplanation()}
+    </div>
+  )
 }
 
 renderAuditPhotosButton() {
@@ -879,10 +979,25 @@ renderAuditPhotosButton() {
       label='Audit Photos'
       onClick={this.handleAuditPhotos}
       style={{
-        marginLeft: '10px',
+        marginLeft: '0px',
       }}
     />
   );
+}
+
+renderAuditPhotosExplanation() {
+  return (
+    <p>TBD</p>
+  )
+}
+
+renderAuditPhotos() {
+  return (
+    <div>
+      {this.renderAuditPhotosButton()}
+      {this.renderAuditPhotosExplanation()}
+    </div>
+  )
 }
 
 renderAlbumRow(albumNames: AlbumSpec, index: number) {
@@ -925,24 +1040,23 @@ renderAlbumList() {
   );
 }
 
+/*
+        {this.renderAlbumList()}
+        <br></br>
+*/
 render() {
-
-  const self = this;
 
   return (
     <MuiThemeProvider>
       <div>
         {this.renderTitle()}
         {this.renderStatus()}
-        {this.renderSynchronizeAlbumsButton()}
-        {this.renderSynchronizeFilesButton()}
-        {this.renderSynchronizeAlbumNamesButton()}
+        {this.renderSynchronizeAlbums()}
+        {this.renderSynchronizeFiles()}
+        {this.renderSynchronizeAlbumNames()}
         {this.renderGenerateManifests()}
-        {this.renderConvertHeicFilesButton()}
-        {this.renderAuditPhotosButton()}
-        <br></br>
-        {this.renderAlbumList()}
-        <br></br>
+        {this.renderConvertHeicFiles()}
+        {this.renderAuditPhotos()}
       </div>
     </MuiThemeProvider>
   );
