@@ -40,7 +40,11 @@ interface HeicFileToConvert {
 }
 
 const userDataBaseDir: string = path.join(remote.app.getPath('userData'), 'appData');
+const photoCollectionManifestPath = path.join(userDataBaseDir, 'photoCollectionManifest.json');
+const albumsManifestPath = path.join(userDataBaseDir, 'albumsManifest.json');
 console.log('user data directory: ', userDataBaseDir);
+console.log('manifestPath: ', photoCollectionManifestPath);
+console.log('albumsManifestPath: ', albumsManifestPath);
 
 export default class App extends React.Component<any, object> {
 
@@ -139,8 +143,6 @@ export default class App extends React.Component<any, object> {
 
   generatePhotoCollectionManifest(): Promise<void> {
 
-    const manifestPath = path.join(userDataBaseDir, 'photoCollectionManifest.json');
-
     const mediaItemsQuery = MediaItem.find({});
     return mediaItemsQuery.exec()
       .then((mediaItemQueryResults: any) => {
@@ -180,7 +182,7 @@ export default class App extends React.Component<any, object> {
               albums: albumItemsByAlbumName,
             };
             const json = JSON.stringify(manifestFile, null, 2);
-            fse.writeFile(manifestPath, json, 'utf8', (err) => {
+            fse.writeFile(photoCollectionManifestPath, json, 'utf8', (err) => {
               if (err) {
                 console.log('err');
                 console.log(err);
@@ -196,9 +198,6 @@ export default class App extends React.Component<any, object> {
   }
 
   generateAlbumsManifest() {
-
-    const photoCollectionManifestPath = path.join(userDataBaseDir, 'photoCollectionManifest.json');
-    const albumsManifestPath = path.join(userDataBaseDir, 'albumsManifest.json');
     
     const manifestContents = fse.readFileSync(photoCollectionManifestPath);
     // attempt to convert buffer to string resulted in Maximum Call Stack exceeded
@@ -237,14 +236,12 @@ export default class App extends React.Component<any, object> {
   }
 
   generateManifests() {
-    this.generatePhotoCollectionManifest().then(() => {
+    // this.generatePhotoCollectionManifest().then(() => {
       this.generateAlbumsManifest();
-    })
+    // })
   }
 
   getAlbumsListFromManifest(): AlbumsByTitle {
-
-    const photoCollectionManifestPath = path.join(userDataBaseDir, 'photoCollectionManifest.json');
 
     const manifestContents = fse.readFileSync(photoCollectionManifestPath);
     // attempt to convert buffer to string resulted in Maximum Call Stack exceeded
